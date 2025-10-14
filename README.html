@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku MVP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- SCRIPT DO GOOGLE ANALYTICS (GA4) - INÍCIO -->
+    <!-- ID de Métricas G-MBJC8GWZK7 inserido -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-MBJC8GWZK7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+    
+      gtag('config', 'G-MBJC8GWZK7');
+    </script>
+    <!-- SCRIPT DO GOOGLE ANALYTICS (GA4) - FIM -->
+
+    <style>
+        /* Estilos personalizados para o Sudoku */
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Melhora a responsividade em dispositivos móveis */
+        }
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, minmax(0, 1fr));
+            grid-template-rows: repeat(9, minmax(0, 1fr));
+            width: 90vw;
+            height: 90vw;
+            max-width: 540px;
+            max-height: 540px;
+            border: 3px solid #1f2937; /* Cor cinza-escuro */
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(1rem, 5vw, 2rem);
+            border: 1px solid #d1d5db; /* Cor cinza-claro */
+            transition: background-color 0.2s;
+        }
+        /* Bordas mais grossas para os blocos 3x3 */
+        .cell:nth-child(3n) { border-right-width: 3px; border-right-color: #1f2937; }
+        .cell:nth-child(9n) { border-right-width: 1px; border-right-color: #d1d5db; }
+        .sudoku-grid .row:nth-child(3n) .cell { border-bottom-width: 3px; border-bottom-color: #1f2937; }
+        .sudoku-grid .row:nth-child(9) .cell { border-bottom-width: 1px; border-bottom-color: #d1d5db; }
+        .sudoku-grid .row .cell:nth-child(1) { border-left-width: 1px; border-left-color: #d1d5db; }
+        .sudoku-grid .row:nth-child(1) .cell { border-top-width: 1px; border-top-color: #d1d5db; }
+
+        .cell-input {
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            border: none;
+            background-color: transparent;
+            font-size: inherit;
+            color: #1d4ed8; /* Cor azul */
+            font-weight: bold;
+        }
+        .cell-input:focus {
+            outline: none;
+            background-color: #eff6ff; /* Cor azul-claro */
+        }
+        .pre-filled {
+            background-color: #f3f4f6; /* Cor cinza-muito-claro */
+            color: #374151; /* Cor cinza-médio */
+            font-weight: 600;
+        }
+        .number-picker button {
+            width: 40px;
+            height: 40px;
+        }
+        .correct { background-color: #dcfce7; } /* Cor verde-claro */
+        .incorrect { background-color: #fee2e2; } /* Cor vermelho-claro */
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="text-center mb-6">
+        <h1 class="text-4xl font-bold text-gray-800">Sudoku</h1>
+        <p class="text-gray-600">Fase 1: Validação do MVP</p>
+    </div>
+
+    <div id="sudoku-grid" class="sudoku-grid"></div>
+
+    <div id="number-picker" class="flex space-x-2 my-6">
+        <!-- Os botões dos números serão inseridos aqui pelo JavaScript -->
+    </div>
+    
+    <div class="flex space-x-4">
+        <button id="check-btn" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">
+            Verificar
+        </button>
+        <button id="new-game-btn" class="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75">
+            Novo Jogo
+        </button>
+    </div>
+
+    <div id="message-area" class="mt-4 text-lg font-medium text-gray-700 h-6"></div>
+
+    <script>
+        // --- LÓGICA CENTRAL DO SUDOKU ---
+        const gridElement = document.getElementById('sudoku-grid');
+        const checkBtn = document.getElementById('check-btn');
+        const newGameBtn = document.getElementById('new-game-btn');
+        const messageArea = document.getElementById('message-area');
+        const numberPicker = document.getElementById('number-picker');
+
+        let solution = [];
+        let puzzle = [];
+        let selectedCell = null;
+
+        function init() {
+            generateNewPuzzle();
+            renderBoard();
+            if (!document.getElementById('number-picker').hasChildNodes()) {
+                createNumberPicker();
+            }
+        }
+        
+        function generateNewPuzzle() {
+            let board = Array(9).fill(0).map(() => Array(9).fill(0));
+            solveSudoku(board);
+            solution = board.map(row => [...row]);
+            puzzle = removeNumbers(solution, 45); // Dificuldade média
+        }
+        
+        function solveSudoku(board) {
+            const emptyCell = findEmptyCell(board);
+            if (!emptyCell) return true;
+            const [row, col] = emptyCell;
+            const numbers = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            for (const num of numbers) {
+                if (isNumberValid(board, row, col, num)) {
+                    board[row][col] = num;
+                    if (solveSudoku(board)) return true;
+                    board[row][col] = 0; // Backtrack
+                }
+            }
+            return false;
+        }
+        
+        function isNumberValid(board, row, col, num) {
+            for (let x = 0; x < 9; x++) if (board[row][x] === num) return false;
+            for (let y = 0; y < 9; y++) if (board[y][col] === num) return false;
+            const startRow = row - (row % 3), startCol = col - (col % 3);
+            for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (board[i + startRow][j + startCol] === num) return false;
+            return true;
+        }
+
+        function removeNumbers(board, holes) {
+            let puzzleBoard = board.map(row => [...row]);
+            let removed = 0;
+            while (removed < holes) {
+                const row = Math.floor(Math.random() * 9);
+                const col = Math.floor(Math.random() * 9);
+                if (puzzleBoard[row][col] !== 0) {
+                    puzzleBoard[row][col] = 0;
+                    removed++;
+                }
+            }
+            return puzzleBoard;
+        }
+        
+        function findEmptyCell(board) {
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) if (board[r][c] === 0) return [r, c];
+            return null;
+        }
+        
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function renderBoard() {
+            gridElement.innerHTML = '';
+            for (let r = 0; r < 9; r++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+                 for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    if (puzzle[r][c] !== 0) {
+                        cell.textContent = puzzle[r][c];
+                        cell.classList.add('pre-filled');
+                    } else {
+                        cell.addEventListener('click', () => {
+                            if (selectedCell) selectedCell.style.backgroundColor = '';
+                            selectedCell = cell;
+                            selectedCell.style.backgroundColor = '#eff6ff';
+                        });
+                    }
+                    gridElement.appendChild(cell);
+                }
+            }
+        }
+
+        function createNumberPicker() {
+            for (let i = 1; i <= 9; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.className = "number-picker-btn flex items-center justify-center rounded-md border border-gray-300 bg-white text-lg font-semibold text-gray-700 shadow-sm hover:bg-gray-50";
+                button.addEventListener('click', () => { if (selectedCell) selectedCell.textContent = i; });
+                numberPicker.appendChild(button);
+            }
+             const eraseButton = document.createElement('button');
+             eraseButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="18" y1="9" x2="12" y2="15"></line><line x1="12" y1="9" x2="18" y2="15"></line></svg>`;
+             eraseButton.className = "number-picker-btn flex items-center justify-center rounded-md border border-gray-300 bg-white text-lg font-semibold text-gray-700 shadow-sm hover:bg-gray-50";
+             eraseButton.addEventListener('click', () => { if(selectedCell) selectedCell.textContent = ''; });
+            numberPicker.appendChild(eraseButton);
+        }
+
+        function checkSolution() {
+            let allCorrect = true;
+            let isFull = true;
+            messageArea.textContent = '';
+            const cells = gridElement.querySelectorAll('.cell');
+
+            cells.forEach(cell => {
+                cell.classList.remove('correct', 'incorrect');
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const isPrefilled = cell.classList.contains('pre-filled');
+
+                if (!isPrefilled) {
+                    if (cell.textContent) {
+                        const userValue = parseInt(cell.textContent);
+                        if (userValue === solution[row][col]) {
+                            cell.classList.add('correct');
+                        } else {
+                            cell.classList.add('incorrect');
+                            allCorrect = false;
+                        }
+                    } else {
+                        isFull = false; // Encontrou uma célula vazia
+                    }
+                }
+            });
+
+            if (!isFull) {
+                allCorrect = false;
+            }
+
+            if (allCorrect) {
+                messageArea.textContent = 'Parabéns! Solução correta!';
+                messageArea.style.color = 'green';
+                
+                // EVENTO GOOGLE ANALYTICS: Partida completada com sucesso
+                if (typeof gtag === 'function') {
+                    gtag('event', 'game_completed');
+                }
+
+            } else {
+                 messageArea.textContent = 'Existem erros ou células por preencher.';
+                 messageArea.style.color = 'red';
+                 
+                 // EVENTO GOOGLE ANALYTICS: Tentativa de verificação falhou
+                 if (typeof gtag === 'function') {
+                    gtag('event', 'check_failed');
+                 }
+            }
+        }
+        
+        // --- Event Listeners ---
+        checkBtn.addEventListener('click', checkSolution);
+        
+        newGameBtn.addEventListener('click', () => {
+            messageArea.textContent = '';
+            
+            // EVENTO GOOGLE ANALYTICS: Novo jogo iniciado
+            if (typeof gtag === 'function') {
+                gtag('event', 'new_game_started');
+            }
+
+            init();
+        });
+
+        // Inicia o jogo
+        init();
+    </script>
+</body>
+</html>
+
